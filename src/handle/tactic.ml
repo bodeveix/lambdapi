@@ -409,94 +409,6 @@ let is_right (pos:popt) (t:term): bool =
   | "" | "right" -> true
   | _ -> fatal pos "invalid side literal"
 
-(** [p_tactic ss g env pos t] weak head normalizes [t] and convert the result
-    into a p_tactic. *)
-let p_tactic (ss:Sig_state.t) (g:goal) (env:Env.t) (pos:Pos.popt) (t:term)
-    : p_tactic =
-  let idmap = get_names g
-  and ctx = Env.to_ctxt env in
-  let c = get_config ss pos in
-  let p_term = p_term ss pos idmap in
-  let tac_eval t = Pos.make pos (P_tac_eval (p_term t)) in
-  let tac t =
-    let t = Eval.whnf ctx t in
-    if Logger.log_enabled() then log "reduces to: %a" term t;
-    match get_args t with
-    | Symb s, ts ->
-        begin
-          try
-            match Hashtbl.find c s.sym_name, ts with
-            | T_admit, _ -> P_tac_admit
-            | T_compose, [t1;t2] -> P_tac_and(tac_eval t1, tac_eval t2)
-            | T_compose, _ -> assert false
-            | T_all_hyps, [t] -> P_tac_all_hyps (p_term t)
-            | T_all_hyps, _ -> assert false
-            | T_apply, [_;t] -> P_tac_apply (p_term t)
-            | T_apply, _ -> assert false
-            | T_assume, [prefix;_;Abst (_, t)] ->
-              let v = uniq_name (new_var (string_of_term pos prefix)) in
-              let n = Pos.make pos v and v = new_var v in
-              P_tac_and (Pos.make pos (P_tac_assume [Some n]),
-                         tac_eval (subst t (mk_Vari v)))
-            | T_assume, _ -> assert false
-            | T_assumption, [] -> P_tac_assumption
-            | T_assumption, _ -> assert false
-            | T_change, [_;t] -> P_tac_apply (p_term t)
-            | T_change, _ -> assert false
-            | T_fail, _ -> P_tac_fail
-            | T_first_hyp, [t] -> P_tac_first_hyp (p_term t)
-            | T_first_hyp, _ -> assert false
-            | T_focus, [t] -> P_tac_focus (string_of_term pos t)
-            | T_focus, _ -> assert false
-            | T_generalize, [_;t] -> P_tac_generalize(p_ident_of_var pos t)
-            | T_generalize, _ -> assert false
-            | T_have, [t1;t2] ->
-                let prf_sym = Builtin.get ss pos [] "P" in
-                let prf = p_term (mk_Symb prf_sym) in
-                let t2 = Pos.make pos (P_Appl(prf, p_term t2)) in
-                P_tac_have(Pos.make pos (string_of_term pos t1), t2)
-            | T_have, _ -> assert false
-            | T_induction, _ -> P_tac_induction
-            | T_orelse, [t1;t2] -> P_tac_orelse(tac_eval t1, tac_eval t2)
-            | T_orelse, _ -> assert false
-            | T_print, [t] ->
-              let arg =
-                match unfold t with
-                | Symb s -> s.sym_name
-                | _ -> fatal pos "not a symbol or string literal: %a" term t
-              in
-              P_tac_query (Pos.make pos (P_query_print (String arg)))
-            | T_print, _ -> assert false
-            | T_refine, [t] -> P_tac_refine(p_term_of_string_term pos t)
-            | T_refine, _ -> assert false
-            | T_reflexivity, _ -> P_tac_refl
-            | T_remove, [_;t] -> P_tac_remove [p_ident_of_var pos t]
-            | T_remove, _ -> assert false
-            | T_repeat, [t] -> P_tac_repeat(tac_eval t)
-            | T_repeat, _ -> assert false
-            | T_rewrite, [side;pat;_;t] ->
-                P_tac_rewrite(is_right pos side,
-                              p_rwpatt_of_string_term pos pat, p_term t)
-            | T_rewrite, _ -> assert false
-            | T_set, [t1;_;t2] ->
-                P_tac_set(Pos.make pos (string_of_term pos t1), p_term t2)
-            | T_set, _ -> assert false
-            | T_simplify, _ -> P_tac_simpl SimpAll
-            | T_simplify_beta, _ -> P_tac_simpl SimpBetaOnly
-            | T_solve, _ -> P_tac_solve
-            | T_symmetry, _ -> P_tac_sym
-            | T_try, [t] -> P_tac_try(tac_eval t)
-            | T_try, _ -> assert false
-            | T_why3, _ -> P_tac_why3 None
-            | T_with_goal, [t] -> P_tac_with_goal (p_term t)
-            | T_with_goal, _ -> assert false
-          with Not_found ->
-            fatal pos "Unhandled tactic expression: %a." term t
-        end
-    | _ -> fatal pos "Unhandled tactic expression: %a." term t
-  in
-  Pos.make pos (tac t)
-
 (** [new_name prefix env] returns a string prefixed by [prefix] and not
     occurring in [env]. *)
 let new_name (prefix:string) (env:Env.t): string =
@@ -711,6 +623,7 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             let ids = Ctxt.names c in let term = term_in ids in
             fatal pos "(%a) is not typable." term t
         | Some (_, a) -> LibTerm.count_products Eval.whnf c a
+                         - LibTerm.count_products Eval.whnf c (gt.goal_type)
       in
       let t = scope (P.appl_wild pt n) in
       tac_refine pos ps gt gs (new_problem()) t

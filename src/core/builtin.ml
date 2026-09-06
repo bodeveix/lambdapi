@@ -240,6 +240,7 @@ let _ =
   register_typ "solve" tac;
   register_typ "symmetry" tac;
   register_typ "try" (arr tac tac);
-  register_typ "why3" tac
+  register_typ "why3" tac;
+  register_typ "with_goal" (arr (arr prop tac) tac);
 
 end

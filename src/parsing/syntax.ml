@@ -360,6 +360,7 @@ let tactic_keyword : p_tactic -> string option = fun {elt;_} ->
   | P_tac_sym -> Some "symmetry"
   | P_tac_try _ -> Some "try"
   | P_tac_why3 _ -> Some "why3"
+  | P_tac_with_goal _ -> Some "with_goal"
 
 (** [tactic_keyword_pos t] returns the position of the keyword introducing
     tactic [t], or the position of the whole of [t] when no single keyword

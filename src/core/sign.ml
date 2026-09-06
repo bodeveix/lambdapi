@@ -112,7 +112,7 @@ let link : t -> unit = fun sign ->
               StrMap.add s.sym_name s !(Ghost.sign.sign_symbols);
             s
           end
-        else assert false
+        else begin failwith s.sym_name end
   in
   let link_term mk_Appl =
     let rec link_term t =
