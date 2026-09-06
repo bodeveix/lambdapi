@@ -597,7 +597,6 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             let ids = Ctxt.names c in let term = term_in ids in
             fatal pos "(%a) is not typable." term t
         | Some (_, a) -> LibTerm.count_products Eval.whnf c a
-                         - LibTerm.count_products Eval.whnf c gt.goal_type
       in
       let t = scope (P.appl_wild pt n) in
       tac_refine pos ps gt gs (new_problem()) t
