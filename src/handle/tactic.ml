@@ -197,56 +197,6 @@ let get_prod_ids env =
         else List.rev acc
   in aux []
 
-(** [get_goal pos ps gt] tries to build a goal [g] such as typing goal
-   [gt] = [Prf p]. It uses builtins P, T, imp and all.
-*)
-let get_goal: popt -> Sig_state.t -> goal_typ -> Term.term = fun pos ss gt ->
-  let cfg = Gconf.get_config ss pos in
-  let imp = mk_Symb (cfg.symb_imp) in
-  let all = mk_Symb (cfg.symb_all) in
-
-  (* Extract the term from the goal type (get “u” from “Prf u”). *)
-  let is_prf g =
-    match get_args g with
-    | t, (u::_) when is_symb cfg.symb_P t -> Some u
-    | _ -> None
-  in
-  let is_set g =
-    match get_args g with
-    | t, (u::_) when is_symb cfg.symb_T t -> Some u
-    | _ -> None
-  in
-  let rec as_prop g =
-    match is_prf g with
-    | Some u -> u
-    | None -> match unfold g with
-              | Prod(p,bi) when not (binder_occur bi) ->
-                  begin
-                    let (_,q) = unbind bi in
-                    match is_prf p with
-                      Some u -> mk_Appl(mk_Appl (imp,u), as_prop q)
-                    | None ->
-                        fatal pos "Goal %a not of the form (%a _ [-> ...])."
-                          term gt.goal_type sym cfg.symb_P
-                  end
-              | Prod(p,bi) ->
-                  begin
-                    let (v,q) = unbind bi in
-                    match is_set p with
-                      Some u ->
-                        let q = as_prop q in
-                        mk_Appl(mk_Appl(all, u), mk_Abst(p,bind_var v q))
-                    | None ->
-                        fatal pos "Goal %a not of the form (%a _ [-> ...])."
-                          term gt.goal_type sym cfg.symb_P
-                  end
-              | _ -> fatal pos "Goal %a not of the form (%a _ [-> ...])."
-                       term gt.goal_type sym cfg.symb_P
-  in
-  let r = as_prop gt.goal_type in
-  (* wrn None "goal [%a]" term r; *)
-  r
-
 (** Builtin tactic names. *)
 type tactic =
   | T_admit
@@ -350,6 +300,7 @@ let p_term (ss:Sig_state.t) (pos:popt): int StrMap.t -> term -> p_term =
         let id = Pos.make pos (base_name x) in
         P_LLet(id,[],Some(term idmap a),term idmap t,term idmap' b)
     | Meta _ -> P_Wild
+    | Plac _ -> P_Wild
     | _ -> fatal pos "Unhandled term expression: %a." Print.term t
   in term
 
@@ -835,10 +786,19 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
         | _ -> assert false
       end
   | P_tac_with_goal t ->
-      let goal = get_goal pos ss gt in
+      let prf = Builtin.get ss pos [] "Prf" in
+      let prop = Builtin.get ss pos [] "Prop" in
+      let p = new_problem() in
+      let n = List.length env in
+      let m = LibMeta.fresh p (Env.to_prod env (mk_Symb prop)) n in
+      let goal = mk_Meta(m,Env.to_terms env) in
+      let c = (ctxt g,(mk_Appl (mk_Symb prf, goal)), gt.goal_type) in
+      p := {!p with to_solve = c::!p.to_solve};
+      if not (Unif.solve_noexn p) || !p.unsolved <> [] || !p.to_solve <> []
+      then fatal pos "Cannot unify goal with (Prf _)";
       let t = scope t in
       let t = mk_Appl (t, goal) in
-      if (Logger.log_enabled ()) then log "WITH_GOAL [%a]\n" term t;
+      if (Logger.log_enabled ()) then log "WITH_GOAL [%a]" term goal;
       let ps,t = p_tactic ps g env pos t in
       handle ps t
   | P_tac_try t ->
