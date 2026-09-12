@@ -478,7 +478,7 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             | T_try, [t] -> ps, mk(P_tac_try(tac_eval t))
             | T_try, _ -> assert false
             | T_why3, _ -> ps, mk(P_tac_why3 None)
-            | T_with_goal, [l;t] -> 
+            | T_with_goal, [l;t] ->
                 ps, mk (P_tac_with_goal (p_term l,p_term t))
             | T_with_goal, _ -> assert false
           with Not_found ->

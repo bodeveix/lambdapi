@@ -241,6 +241,6 @@ let _ =
   register_typ "symmetry" tac;
   register_typ "try" (arr tac tac);
   register_typ "why3" tac;
-  register_typ "with_goal" (prod lvl (fun l -> arr (arr (univ (var l)) tac) tac));
-
+  register_typ "with_goal"
+    (prod lvl (fun l -> arr (arr (univ (var l)) tac) tac))
 end
