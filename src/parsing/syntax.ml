@@ -305,7 +305,7 @@ type p_tactic_aux =
   | P_tac_sym
   | P_tac_try of p_tactic
   | P_tac_why3 of string option
-  | P_tac_with_goal of p_term
+  | P_tac_with_goal of p_term * p_term
 
 and p_tactic = p_tactic_aux loc
 
@@ -556,11 +556,12 @@ let eq_p_tactic : p_tactic eq = fun {elt=t1;_} {elt=t2;_} ->
   match t1, t2 with
   | P_tac_all_hyps t1, P_tac_all_hyps t2
   | P_tac_first_hyp t1, P_tac_first_hyp t2
-  | P_tac_with_goal t1, P_tac_with_goal t2
   | P_tac_apply t1, P_tac_apply t2
   | P_tac_refine t1, P_tac_refine t2 -> eq_p_term t1 t2
   | P_tac_have(i1,t1), P_tac_have(i2,t2) ->
       eq_p_ident i1 i2 && eq_p_term t1 t2
+  | P_tac_with_goal (l1,t1), P_tac_with_goal (l2,t2) ->
+      eq_p_term l1 l2 && eq_p_term t1 t2
   | P_tac_assume xs1, P_tac_assume xs2 ->
       List.eq (Option.eq eq_p_ident) xs1 xs2
   | P_tac_rewrite(b1,p1,t1), P_tac_rewrite(b2,p2,t2) ->

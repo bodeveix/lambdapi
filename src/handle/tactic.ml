@@ -478,7 +478,8 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             | T_try, [t] -> ps, mk(P_tac_try(tac_eval t))
             | T_try, _ -> assert false
             | T_why3, _ -> ps, mk(P_tac_why3 None)
-            | T_with_goal, [t] -> ps, mk (P_tac_with_goal(p_term t))
+            | T_with_goal, [l;t] -> 
+                ps, mk (P_tac_with_goal (p_term l,p_term t))
             | T_with_goal, _ -> assert false
           with Not_found ->
             fatal pos "Unhandled tactic expression: %a." term t
@@ -784,17 +785,20 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             Why3_tactic.handle ss pos cfg gt; tac_admit ss sym_pos ps gt
         | _ -> assert false
       end
-  | P_tac_with_goal t ->
-      let prf = Builtin.get ss pos [] "Prf" in
-      let prop = Builtin.get ss pos [] "Prop" in
+  | P_tac_with_goal (l,t) ->
+      let l = scope l in
+      let univ = Builtin.get ss pos [] "Univ" in
+      let eps = Builtin.get ss pos [] "Type" in
+      let eps a = mk_Appl(mk_Appl(mk_Symb eps,l),a) in
       let p = new_problem() in
       let n = List.length env in
-      let m = LibMeta.fresh p (Env.to_prod env (mk_Symb prop)) n in
+      let ul = mk_Appl (mk_Symb univ, l) in
+      let m = LibMeta.fresh p (Env.to_prod env ul) n in
       let goal = mk_Meta(m,Env.to_terms env) in
-      let c = (ctxt g,(mk_Appl (mk_Symb prf, goal)), gt.goal_type) in
+      let c = (ctxt g, eps goal, gt.goal_type) in
       p := {!p with to_solve = c::!p.to_solve};
       if not (Unif.solve_noexn p) || !p.unsolved <> [] || !p.to_solve <> []
-      then fatal pos "Cannot unify goal with (Prf _)";
+      then fatal pos "Cannot unify goal with (U %a)" term l;
       let t = scope t in
       let t = mk_Appl (t, goal) in
       if (Logger.log_enabled ()) then log "WITH_GOAL [%a]" term goal;
@@ -824,7 +828,7 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
           fatal pt.pos "Cannot infer the type of [%a]" term t
       | Some(t,_) ->
         if Unif.solve_noexn p then
-          let ps,t = p_tactic ps g env pos t in handle ps t
+          let ps, t = p_tactic ps g env pos t in handle ps t
         else fatal pos "Cannot solve typing constraints for [%a]" term t
 
   in handle

@@ -11,5 +11,6 @@ with prove _ ↪ #print "" & #assumption;
 
 symbol test : Π x:τ T,  π (P x) → π (P x) ≔
 begin
-  eval (#with_goal (λ g:Prop, #set "g1" [prop] g & #print "" & prove g));
+debug +tu;
+  eval (#with_goal [prop] (λ (g: U prop), #set "g1" [prop] g & #print "" & prove g));
 end;
