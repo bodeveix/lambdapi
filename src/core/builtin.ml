@@ -216,19 +216,21 @@ let _ =
   in
   register_typ "admit" tac;
   (*
-    Π [l:L] [a:U l] (e: η a) (P:Prop),
-    (Π (Q:η a → Prop), π (P ⇒ Q e) → Tactic) → Tactic;
+    Π [l l':L] [a:U l] (e: η a) (P: U l'),
+    (Π Q:η a → U l', (η P -> η (Q e)) → Tactic) → Tactic;
    *)
   register_typ "abstract"
     (prod lvl (fun l ->
+      prod lvl (fun l' ->
          prod (univ (var l)) (fun a ->
              prod (eps (var l) (var a)) (fun e ->
-                 prod prop (fun p ->
-                     arr (prod (arr (eps (var l) (var a)) prop)
-                            (fun q -> arr (arr (app prf (var p))
-                                             (app prf (app (var q) (var e))))
-                                        tac))
-                       tac)))));
+                 prod (univ (var l')) (fun p ->
+                     arr (prod (arr (eps (var l) (var a)) (univ (var l')))
+                           (fun q -> arr (arr (eps (var l') (var p))
+                                              (eps (var l')
+                                                   (app (var q) (var e))))
+                                         tac))
+                       tac))))));
   register_typ "all_hyps" (arr t1 tac);
   register_typ "apply" t1;
   register_typ "assume" (arr str t2);

@@ -401,16 +401,16 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             (*FIXME: compute config only once in a proof*)
             let c = get_config ss pos in
             match Hashtbl.find c s.sym_name, ts with
-            | T_abstract, [_; _; e; t; Abst (u, bi)] -> begin
+            | T_abstract, [_; _; _; e; t; Abst (u, bi)] -> begin
                match Eval.whnf ctx u with
                  Prod(tte,_) -> begin
                    let p = Rewrite.bind_pattern e t in
                    let bi = subst bi (mk_Abst (tte,p)) in
                    let ctx = Env.to_ctxt env in
                    let bi = match Eval.whnf ctx bi with
-                       Abst (ty, bi) ->
+                     | Abst (ty, bi) ->
                          begin match Eval.whnf ctx ty with
-                           Prod(te, _) ->
+                         | Prod(te, _) ->
                              let v = new_var "x" in
                              subst bi (mk_Abst (te, bind_var v (mk_Vari v)))
                          | _ ->
