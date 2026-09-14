@@ -216,5 +216,8 @@ let count_products :
     | Prod(_,b), [] -> count false [] (acc + 1) (subst b mk_Kind)
     | Prod(_,b), true::impl -> count false impl acc (subst b mk_Kind)
     | Prod(_,b), false::impl -> count false impl (acc + 1) (subst b mk_Kind)
+    | Abst(_,b), [] -> count false [] (acc + 1) (subst b mk_Kind)
+    | Abst(_,b), true::impl -> count false impl acc (subst b mk_Kind)
+    | Abst(_,b), false::impl -> count false impl (acc + 1) (subst b mk_Kind)
     | _ -> if is_norm then acc else count true impl acc (norm c t)
   in count false impl 0

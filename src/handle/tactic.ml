@@ -80,6 +80,7 @@ let tac_admit: Sig_state.t -> popt -> proof_state -> goal_typ -> proof_state =
 let tac_solve : popt -> proof_state -> proof_state = fun pos ps ->
   if Logger.log_enabled() then log "tac_solve";
   (* convert the proof_state into a problem *)
+let _ = log "TAC SOLVE1 %a" Proof.goals ps in
   let gs_typ, gs_unif = List.partition is_typ ps.proof_goals in
   let p = new_problem() in
   let add_meta ms = function
@@ -111,7 +112,9 @@ let tac_solve : popt -> proof_state -> proof_state = fun pos ps ->
     gs_typ @ MetaSet.fold add_goal (!p).metas
                (List.map (fun c -> Unif c) (!p).unsolved)
   in
-  {ps with proof_goals}
+  let ps = {ps with proof_goals} in
+  let _ = log "TAC SOLVE2 %a" Proof.goals ps in
+  ps
 
 (** [tac_refine pos ps gt gs p t] refines the typing goal [gt] with [t]. *)
 let tac_refine : ?check:bool ->
@@ -119,6 +122,7 @@ let tac_refine : ?check:bool ->
       -> proof_state =
   fun ?(check=true) pos ps gt gs p t ->
   if Logger.log_enabled () then log "tac_refine %a" term t;
+  log "*** TAC REFINE %a\n %a\n" term t Proof.goals ps;
   let c = Env.to_ctxt gt.goal_hyps in
   (* Check that [t] has the required type. *)
   let t =
@@ -227,6 +231,7 @@ type tactic =
   | T_symmetry
   | T_try
   | T_why3
+  | T_with_goal
 
 type config = (string,tactic) Hashtbl.t
 
@@ -265,6 +270,7 @@ let get_config (ss:Sig_state.t) (pos:Pos.popt) : config =
   add "symmetry" T_symmetry;
   add "try" T_try;
   add "why3" T_why3;
+  add "with_goal" T_with_goal;
   t
 
 (** [p_term pos t] converts the term [t] into a p_term at position [pos]. *)
@@ -394,6 +400,7 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
     fun t ->
       let t = Eval.whnf ctx t in
       if Logger.log_enabled() then log "reduces to: %a" term t;
+      log "*** P_TACTIC %a\n %a\n" term t Proof.goals ps;
       match get_args t with
       | Symb s, ts ->
         begin
@@ -502,6 +509,8 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             | T_try, [t] -> ps, mk(P_tac_try(tac_eval t))
             | T_try, _ -> assert false
             | T_why3, _ -> ps, mk(P_tac_why3 None)
+            | T_with_goal, [t] -> ps, mk (P_tac_with_goal(p_term t))
+            | T_with_goal, _ -> assert false
           with Not_found ->
             fatal pos "Unhandled tactic expression: %a." term t
         end
@@ -572,22 +581,39 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
   | P_tac_all_hyps t ->
     let t = scope t in
     let l = mk_Symb (Builtin.get ss pos [] "Level") in
-    let try_assumption (ps: proof_state) (_,(v,a,_)): proof_state =
+    let _u = mk_Symb (Builtin.get ss pos [] "Univ") in
+    let _tac = mk_Symb (Builtin.get ss pos [] "Tactic") in
+    let c = Env.to_ctxt env in
+    let _n = List.length env in
+    let _ts = Env.to_terms env in
+    let try_assumption (ps: proof_state) (_,(v,_,_)): proof_state =
       match ps.proof_goals with
       | [] -> fatal pos "all_hyps called on empty goal list."
       | g :: _ ->
         let p = new_problem() in
         let m = mk_Meta(LibMeta.fresh p l 0,[||]) in
-        let t = mk_Appl(mk_Appl(mk_Appl(t,m),a),mk_Vari v) in
-        try let ps, t = p_tactic ps g env pos t in handle ps t
-        with Fatal _ -> ps
-    in
+        let ty,isApp = match Infer.infer_noexn p c (mk_Vari v) with
+            Some (_,Appl(_,t)) -> t, true
+          | _ -> mk_Vari v,false in
+        if isApp then
+          let t = mk_Appl(mk_Appl(mk_Appl(t,m),ty),mk_Vari v) in
+          match Infer.infer_noexn p c t with
+            Some _ -> if Unif.solve_noexn p then
+                        try let ps, t = p_tactic ps g env pos t in handle ps t
+                        with Fatal _ ->
+                          let _ = log "TAC %a FAILED on\n %a" term t Proof.goals ps in
+                          ps
+                      else ps
+          | _ -> ps
+        else ps in
     let ps' = List.fold_left try_assumption ps gt.goal_hyps in
     if ps' == ps then
       fatal pos "(all_hyps %a) fails on all assumptions." term t
     else ps'
   | P_tac_apply pt ->
+let _ = log "APPLY0 ON\n%a" Proof.goals ps in
       let t = scope pt in
+let _ = log "APPLY1 %a" term t in
       (* Compute the product arity of the type of [t]. *)
       let n =
         let c = Env.to_ctxt env in
@@ -595,10 +621,19 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
         match Infer.infer_noexn p c t with
         | None ->
             let ids = Ctxt.names c in let term = term_in ids in
+let _ = log "TYPE ERROR in apply" in
             fatal pos "(%a) is not typable." term t
-        | Some (_, a) -> LibTerm.count_products Eval.whnf c a
+        | Some (_, a) -> 
+let _ = log "APPLY [%d-%d] %a ON \n%a"
+          (LibTerm.count_products Eval.whnf c a)
+          (LibTerm.count_products Eval.whnf c gt.goal_type)
+          term t Proof.goals ps in
+
+            LibTerm.count_products Eval.whnf c a
+            - LibTerm.count_products Eval.whnf c gt.goal_type
       in
       let t = scope (P.appl_wild pt n) in
+let _ = log "APPLY %a ON \n%a" term t Proof.goals ps in
       tac_refine pos ps gt gs (new_problem()) t
   | P_tac_assume idopts ->
       (* Check that no idopt is None. *)
@@ -807,6 +842,22 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             Why3_tactic.handle ss pos cfg gt; tac_admit ss sym_pos ps gt
         | _ -> assert false
       end
+  | P_tac_with_goal t ->
+      let prf = Builtin.get ss pos [] "Prf" in
+      let prop = Builtin.get ss pos [] "Prop" in
+      let p = new_problem() in
+      let n = List.length env in
+      let m = LibMeta.fresh p (Env.to_prod env (mk_Symb prop)) n in
+      let goal = mk_Meta(m,Env.to_terms env) in
+      let c = (ctxt g,(mk_Appl (mk_Symb prf, goal)), gt.goal_type) in
+      p := {!p with to_solve = c::!p.to_solve};
+      if not (Unif.solve_noexn p) || !p.unsolved <> [] || !p.to_solve <> []
+      then fatal pos "Cannot unify goal with (Prf _)";
+      let t = scope t in
+      let t = mk_Appl (t, goal) in
+      if (Logger.log_enabled ()) then log "WITH_GOAL [%a]" term goal;
+      let ps,t = p_tactic ps g env pos t in
+      handle ps t
   | P_tac_try t ->
       begin try handle ps t with Fatal _ -> ps end
   | P_tac_orelse(t1,t2) ->
@@ -820,7 +871,8 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
         with Fatal(_,s,_) ->
           if Logger.log_enabled() then log "repeat stopped with: %s" s; ps
       end
-  | P_tac_and(t1,t2) -> handle (handle ps t1) t2
+  | P_tac_and(t1,t2) -> let _ = log "COMPOSE ON GOAL\n %a" Proof.goals ps in
+                        handle (handle ps t1) t2
   | P_tac_eval pt ->
       let t = scope pt
       and p = new_problem()
@@ -831,7 +883,9 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
           fatal pt.pos "Cannot infer the type of [%a]" term t
       | Some(t,_) ->
         if Unif.solve_noexn p then
-          let ps, t = p_tactic ps g env pos t in handle ps t
+          let ps, t = p_tactic ps g env pos t in
+          let _ = log "*** EVAL TAC %a on GOAL\n%a\n" Pretty.tactic t Proof.goals ps in
+          handle ps t
         else fatal pos "Cannot solve typing constraints for [%a]" term t
 
   in handle
