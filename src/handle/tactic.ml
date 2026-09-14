@@ -594,11 +594,15 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
         match n with
         | Some v -> v
         | None ->
-            let ids = Ctxt.names c in let term = term_in ids in
-            fatal pos "(%a) is not typable." term t
-        | Some (_, a) -> 
-            LibTerm.count_products Eval.whnf c a
-            - LibTerm.count_products Eval.whnf c gt.goal_type
+            let c = Env.to_ctxt env in
+            let p = new_problem () in
+            match Infer.infer_noexn p c t with
+            | None ->
+                let ids = Ctxt.names c in
+                let term = term_in ids in
+                fatal pos "(%a) is not typable." term t
+            | Some (_, a) -> LibTerm.count_products Eval.whnf c a
+                             - LibTerm.count_products Eval.whnf c gt.goal_type
       in
       let t = scope (P.appl_wild pt n) in
       tac_refine pos ps gt gs (new_problem()) t
