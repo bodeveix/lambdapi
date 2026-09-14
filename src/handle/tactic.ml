@@ -203,7 +203,6 @@ let get_prod_ids env =
 
 (** Builtin tactic names. *)
 type tactic =
-  | T_abstract
   | T_admit
   | T_all_hyps
   | T_apply
@@ -242,7 +241,6 @@ let get_config (ss:Sig_state.t) (pos:Pos.popt) : config =
     let s = Builtin.get ss pos [] n in
     Hashtbl.add t s.sym_name v
   in
-  add "abstract" T_abstract;
   add "admit" T_admit;
   add "all_hyps" T_all_hyps;
   add "apply" T_apply;
@@ -408,34 +406,13 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
             (*FIXME: compute config only once in a proof*)
             let c = get_config ss pos in
             match Hashtbl.find c s.sym_name, ts with
-            | T_abstract, [_; _; e; t; Abst (u, bi)] -> begin
-               match Eval.whnf ctx u with
-                 Prod(tte,_) -> begin
-                   let p = Rewrite.bind_pattern e t in
-                   let bi = subst bi (mk_Abst (tte,p)) in
-                   let ctx = Env.to_ctxt env in
-                   let bi = match Eval.whnf ctx bi with
-                       Abst (ty, bi) ->
-                         begin match Eval.whnf ctx ty with
-                           Prod(te, _) ->
-                             let v = new_var "x" in
-                             subst bi (mk_Abst (te, bind_var v (mk_Vari v)))
-                         | _ ->
-                             fatal pos "ABSTRACT fails on type: %a\n" term ty
-                         end
-                     | bi ->
-                         fatal pos "ABSTRACT fails on term: %a\n" term bi
-                   in
-                   if Logger.log_enabled() then log "ABSTRACT %a\n" term bi;
-                   ps, mk(P_tac_eval(p_term bi))
-                 end
-               | _ -> assert false
-              end
-            | T_abstract, _ -> assert false
             | T_admit, _ -> ps, mk P_tac_admit
             | T_all_hyps, [t] -> ps, mk(P_tac_all_hyps(p_term t))
             | T_all_hyps, _ -> assert false
-            | T_apply, [_;_;t] -> ps, mk(P_tac_apply(p_term t))
+            | T_apply, [s;_;_;t] ->
+                let s = String.trim (string_of_term pos s) in
+                let n = try Some (int_of_string s) with Failure _ -> None in
+                ps, mk(P_tac_apply(n, p_term t))
             | T_apply, _ -> assert false
             | T_assume, [prefix;_;_;Abst(_, t)] ->
               begin
@@ -610,30 +587,20 @@ let handle (ss:Sig_state.t) (sym_pos:popt) (priv:bool)
     if ps' == ps then
       fatal pos "(all_hyps %a) fails on all assumptions." term t
     else ps'
-  | P_tac_apply pt ->
-let _ = log "APPLY0 ON\n%a" Proof.goals ps in
+  | P_tac_apply (n,pt) ->
       let t = scope pt in
-let _ = log "APPLY1 %a" term t in
       (* Compute the product arity of the type of [t]. *)
       let n =
-        let c = Env.to_ctxt env in
-        let p = new_problem () in
-        match Infer.infer_noexn p c t with
+        match n with
+        | Some v -> v
         | None ->
             let ids = Ctxt.names c in let term = term_in ids in
-let _ = log "TYPE ERROR in apply" in
             fatal pos "(%a) is not typable." term t
         | Some (_, a) -> 
-let _ = log "APPLY [%d-%d] %a ON \n%a"
-          (LibTerm.count_products Eval.whnf c a)
-          (LibTerm.count_products Eval.whnf c gt.goal_type)
-          term t Proof.goals ps in
-
             LibTerm.count_products Eval.whnf c a
             - LibTerm.count_products Eval.whnf c gt.goal_type
       in
       let t = scope (P.appl_wild pt n) in
-let _ = log "APPLY %a ON \n%a" term t Proof.goals ps in
       tac_refine pos ps gt gs (new_problem()) t
   | P_tac_assume idopts ->
       (* Check that no idopt is None. *)
@@ -713,7 +680,7 @@ let _ = log "APPLY %a ON \n%a" term t Proof.goals ps in
     let idmap = get_names g in
     let f (_,(v,_,_)) =
       let v = p_term ss pos idmap (mk_Vari v) in
-      progress ps (Pos.make pos (P_tac_apply v))
+      progress ps (Pos.make pos (P_tac_apply (None,v)))
     in
     begin match List.find_map f gt.goal_hyps with
       | None -> fatal pos "tactic assumption failed"

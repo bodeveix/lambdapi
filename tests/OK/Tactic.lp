@@ -7,18 +7,15 @@ require open tests.OK.String tests.OK.Univ;
 constant symbol Tactic : TYPE;
 builtin "Tactic" ≔ Tactic;
 
-symbol #abstract : Π [l:L] [a:U l] (e: η a) (P:Prop), 
-                   (Π (Q:η a → Prop), (π P → π (Q e)) → Tactic) → Tactic;
-builtin "abstract" ≔ #abstract;
-
 constant symbol #admit : Tactic;
 builtin "admit" ≔ #admit;
 
 constant symbol #all_hyps: (Π [l] [a:U l], η a → Tactic) → Tactic;
 builtin "all_hyps" ≔ #all_hyps;
 
-constant symbol #apply: Π [l] [a:U l], η a → Tactic;
-builtin "apply" ≔ #apply;
+constant symbol #napply: String → Π [l] [a:U l], η a → Tactic;
+builtin "apply" ≔ #napply;
+symbol #apply [l] [a:U l]: η a → Tactic ≔ @#napply "" l a;
 
 constant symbol #assume : String → Π [l], Π [a:U l], (η a → Tactic) → Tactic;
 builtin "assume" ≔ #assume;
